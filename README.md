@@ -1,14 +1,29 @@
-# Match Season Simulator
+# No Shot ELO Simulator
 
-A **standalone, fully-local** app that reproduces the Scrim Bot's
-`/simulateseason` command — the Monte Carlo ELO stability test — with a web UI
-instead of Discord. Same simulation math, same statistics, and the same 9-panel
-matplotlib graph. It also includes an in-app **Refresh match history** button
-that pulls fresh data from the game API (the same collection the bot does).
+A **standalone, fully-local** Monte Carlo simulator for the No Shot community
+ladder — it stress-tests ELO and matchmaking designs against real recorded
+matches. It's a web-UI port of the Scrim Bot's `/simulateseason` command: same
+simulation math, same statistics, and the same 9-panel matplotlib graph, plus
+an in-app **Refresh match history** button that pulls fresh data from the public
+game API.
+
+Use it to reproduce and check every figure in the ranked-system proposal
+([`docs/elo-system-proposal.md`](docs/elo-system-proposal.md)) — or to test your
+own rating rules.
 
 Nothing is hosted. `npm start` runs a small local server; you use it in your
 browser at `http://localhost:4173`. The only outbound network call is the
 optional match-history refresh.
+
+## Reproduce the proposal
+
+The proposal's comparison comes from one tuned configuration — K factor **20**,
+expected scale **30**, guaranteed **75%**, goal **1.1**, assist **0.9**, save
+**2.5**, performance scale **240**, ELO floor **750** — with **Team assignment**
+toggled between **Optimal** (proposed) and **Snake** (current), and **Starting
+mode** between **Official** and **Fresh**. The full experiment battery and the
+per-stat correlation analysis are scripted: `npx tsx scripts/proposal_numbers.ts`
+and `npx tsx scripts/stat_correlations.ts`.
 
 ## Requirements
 
@@ -27,9 +42,10 @@ npm start
 
 Then open **http://localhost:4173**.
 
-The app ships with a copy of the bot's database at `data/dev.db`. That copy is
-mostly one player's unenriched history, so **it does not yet have enough full
-4v4 rosters to simulate**. Click **Refresh match history** first (see below).
+The app ships with an **empty** database — on first run it creates
+`data/dev.db` automatically. Before you can simulate you need match data, so
+click **Refresh match history** first (see below) to collect the current ladder
+from the public API.
 
 ## Using it
 

@@ -1,7 +1,7 @@
 {
-  "name": "match-simulation-app",
+  "name": "no-shot-elo-simulator",
   "version": "1.0.0",
-  "description": "Standalone Monte Carlo match/ELO simulator ported from the Scrim Bot /simulateseason command, with a local web UI and in-app match-history refresh.",
+  "description": "Standalone Monte Carlo ELO/matchmaking simulator for the No Shot community ladder, with a local web UI and in-app match-history refresh.",
   "type": "module",
   "main": "src/server.ts",
   "scripts": {
