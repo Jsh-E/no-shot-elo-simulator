@@ -10,13 +10,13 @@
 
 The current ranked system has two structural problems that compound each other:
 
-1. **The snake-draft matchmaker systematically favors the higher-rated seat.** Because picks 1, 4, 5, 8 always go to the same side, the team holding the top seat carries a real rating edge whenever the ladder has a gap at the top — and ours does. In simulation the snake leaves a **median team-rating gap of ~11–12 ELO** (optimal balancing brings this to ~1–2), and the higher-rated side wins measurably more often. Measured directly from recorded matches, **the higher-rated team wins 54.6%** of decisive games — rating predicts outcome, so a matchmaker that hands the same player the rating edge hands them a standing advantage.
+1. **The snake-draft matchmaker systematically favors the higher-rated seat.** Because picks 1, 4, 5, 8 always go to the same side, the team holding the top seat carries a real rating edge whenever the ladder has a gap at the top — and ours does. In simulation the snake leaves a **median team-rating gap of ~11–12 ELO** (optimal balancing brings this to ~1–2), and the higher-rated side wins measurably more often. Measured directly from recorded matches, **the higher-rated team wins 50% of all games to the lower-rated side's 42%** (the remaining ~8% are ties) — 54.6% counting decisive games only. Rating predicts outcome, so a matchmaker that hands the same player the rating edge hands them a standing advantage.
 2. **The current rating formula cannot correct it.** A favored team still banks a guaranteed minimum for wins it was always going to get, so a permanently favored seat farms rating with no equilibrium — and because the current system **has no rating floor**, the players who keep losing sink without limit. The ladder pulls apart from both ends: a runaway top and a free-falling bottom. *(The unbounded-spread projection quantifying this — σ→604, a #1 seat past 5,000 ELO — comes from the earlier full-history analysis and is retained in §2.2; it models the current min-clamped formula, which the present simulator does not reproduce.)*
 
 We propose a three-layer replacement — **optimal team balancing, expected-score match payouts, and rating-relative performance credit** — that in simulation:
 
 - converges to the **same ladder from any starting point** (current ratings, a fresh reset, or even under the old snake matchmaking) — per-player final ratings agree across starting points at **correlation 0.85**,
-- keeps team win rates at **~46/46** with no structurally favored side,
+- keeps blue/red win rates even at **~46 / 46** (the rest draws), with no structurally favored side,
 - reaches a **stable, bounded ladder** — the spread converges instead of pulling apart without end — and adds a rating floor that protects the bottom without inflating the economy,
 - makes stats matter *more*, and in chosen proportion — stat-to-rating correlation rises from **0.65 / 0.58 / 0.02** (goals / assists / saves under today's ratings) to **0.83 / 0.77 / 0.24**, turning defense from statistically invisible into a rated contribution,
 - and **never breaks the basic contract**: winners always gain ELO, losers always lose ELO, no matter how well or badly an individual performed.
@@ -31,15 +31,16 @@ Migration is clean: because the system reaches the same ladder from any starting
 
 The live matchmaker sorts the 8-player lobby by ELO and deals picks **1, 4, 5, 8** to Blue and **2, 3, 6, 7** to Red. This balances *rank sums* (1+4+5+8 = 2+3+6+7), but it only balances *ELO* if ratings are evenly spaced. The moment the ladder has a gap at the top — and ours does — the team holding pick #1 inherits that entire gap.
 
-Measured from recorded match history (218 decisive, fully-reconstructed 4v4 matches):
+Measured from recorded match history (238 fully-reconstructed 4v4 matches — 218 decisive, 20 ties):
 
 | Metric | Value |
 |---|---|
-| Higher-rated team win rate | **54.6%** |
+| Higher-rated team: win / loss / tie | **50.0% / 41.6% / 8.4%** |
+| — counting decisive games only, higher-rated wins | **54.6%** |
 | Simulated median team-rating gap under the snake | **~11–12 ELO** |
 | Simulated median team-rating gap under optimal balancing | **~1–2 ELO** |
 
-The same player occupies the top seat in most lobbies, so this is not noise that averages out — it is a standing edge handed to whoever is ranked #1, sitting on top of the gap that creates it.
+The higher-rated team wins half of all matches to the lower-rated side's 42% (the rest are ties) — a real, standing edge, not noise that averages out. Because the same player occupies the top seat in most lobbies, that edge is handed to whoever is ranked #1, sitting on top of the gap that creates it.
 
 ### 2.2 The rating formula amplifies it
 
@@ -151,10 +152,10 @@ Run the new system from today's ratings, then run it again from a blank slate, a
 
 | Metric | Current (snake + live formula) | Proposed (optimal + expected score) |
 |---|---|---|
-| Higher-rated side win rate | 54.6% (measured) | 46.3 / 46.5 (no side) |
-| Simulated win rate, favored vs. other | ~49 / 46 under snake | 46 / 46 (coin flip) |
+| Higher-rated team, real matches (win / loss / tie) | 50.0% / 41.6% / 8.4% (measured) | — teams balanced by design |
+| Simulated result (blue / red / tie) | ~48% / ~46% / ~6% (snake; blue = favored seat) | ~46% / ~46% / ~7% (coin flip) |
 | Median team rating gap | ~11–12 | **~1–2** |
-| Highest rating after a season | ~5,300 (prior analysis) | **~1,300 (earned, no runaway)** |
+| Highest rating after a season (2,000 matches) | ~5,300 (prior analysis) | **~1,300 (earned, no runaway)** |
 | Downside protection | none — losers free-fall, no floor | floor at 750, essentially untouched |
 
 ### 4.4 Stats actually drive rating — in chosen proportion
