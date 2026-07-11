@@ -130,15 +130,17 @@ All results below are averages over 30 independent simulated seasons per configu
 
 ### 4.1 The headline property: path independence
 
-The proposed system converges to **the same ladder regardless of starting point**:
+*Path independence* asks one specific question: run the **proposed** system from different starting ratings, and does it arrive at the same ladder? It does — the starting point washes out.
 
-| Starting point | Final ladder σ | Player order |
+| Proposed system, started from… | Final ladder σ | Final ordering |
 |---|---|---|
-| Current official ratings | 97 | preserved |
-| Fresh reset (everyone 1000) | 88 | preserved |
-| Fresh reset, *snake matchmaking kept* | 97 | preserved |
+| Current official ratings | 97 | agrees with the others |
+| Fresh reset (everyone 1000) | 88 | agrees with the others |
+| Fresh reset, *snake matchmaking kept* | 97 | agrees with the others |
 
-By *preserved order* we mean the players end up ranked in the same sequence — the same people at the top, the same in the middle, the same at the bottom — no matter where the ladder started. The absolute σ differs slightly, but the ranking does not: per-player final ratings from the current-ratings start and the fresh-reset start agree at **correlation 0.85**. Where a player lands is set by how they play, not by where they began or which seat the matchmaker gave them. This is the defining property of a sound rating system, and the current formula fails it (section 2.2).
+Run the new system from today's ratings, then run it again from a blank slate, and the two final ladders come out in the same order — per-player final ratings agree at **correlation 0.85** (the absolute spread σ wobbles between 88 and 97, but the *ranking* is stable). Where a player ends up is decided by how they play, not by where they started or which seat the matchmaker handed them.
+
+**This does not mean players keep their current rank.** That is a separate comparison. Measured against *today's* official ratings, the proposed ladder correlates only about **0.71** — clearly related, but far from identical: plenty of players move, some substantially. That movement is exactly the intended correction — the new system unwinding seat-driven inflation and re-rating people on demonstrated performance. Path independence is the stronger, separate point that this *corrected* ladder is the same destination no matter where you begin — which is why a clean reset (§6) arrives at the same place as a gradual migration from current ratings, only faster. The current system fails this test outright (section 2.2): where you land depends heavily on the seat you were handed.
 
 ### 4.2 Convergence instead of runaway
 
