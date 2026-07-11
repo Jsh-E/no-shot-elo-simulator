@@ -21,7 +21,7 @@ We propose a three-layer replacement — **optimal team balancing, expected-scor
 - makes stats matter *more*, and in chosen proportion — stat-to-rating correlation rises from **0.65 / 0.58 / 0.02** (goals / assists / saves under today's ratings) to **0.83 / 0.77 / 0.24**, turning defense from statistically invisible into a rated contribution,
 - and **never breaks the basic contract**: winners always gain ELO, losers always lose ELO, no matter how well or badly an individual performed.
 
-Migration is clean: because the system reaches the same ladder from any starting point (§4.1), we recommend a **full ELO reset** — everyone starts level and the fair ladder rebuilds itself within about a season. (Seeding from current ratings also works and converges to the same place, for communities that prefer continuity.)
+Migration is clean: because the system reaches the same ladder from any starting point (§4.1), we recommend a **full ELO reset** — everyone starts level and the fair ladder rebuilds itself within about a season (a season is 2,000 matches in these simulations). (Seeding from current ratings also works and converges to the same place, for communities that prefer continuity.)
 
 ---
 
@@ -66,7 +66,7 @@ Three layers, each fixing a failure mode the simulations isolated. Each layer wa
 
 ### 3.1 Matchmaking: optimal split
 
-With 8 players there are only **35 ways to divide them into two teams of four** (C(8,4) ÷ 2). Enumerate all 35, pick the division with the smallest average-ELO difference, and break ties randomly. Those 35 divisions settle *who plays with whom*; because the ELO gap is identical whichever team you label Blue, a final coin flip then decides which of the two balanced teams takes the Blue vs. Red side — so no group can inherit a physical side advantage.
+With 8 players there are only **35 ways to divide them into two teams of four** (C(8,4) ÷ 2). Enumerate all 35, pick the division with the smallest average-ELO difference, and break ties randomly. That fixes the two teams; a coin flip then assigns which takes the Blue vs. Red side, so no group inherits a physical side advantage.
 
 - Strictly better balance than the snake (median team gap drops from **~11–12** to **~1–2 ELO**).
 - No seat is owned by anyone: balancing errors land on random sides and average out per player, instead of always favoring the same person.
@@ -82,6 +82,13 @@ winner pool per player = K × (1 − E),  K = 20
 loser pool per player  = −K × (1 − E)
 draw: K × (E − 0.5) transfers from the higher-rated team to the lower
 ```
+
+where:
+
+- **E** — your team's *expected result*, a win probability from 0 to 1, read off the rating gap between the teams;
+- **ownTeamAvg**, **oppTeamAvg** — the average ELO of your team and of the opposing team;
+- **K** (= 20) — the *K factor*, the most a single player's rating can move in one match;
+- **30** — the *expected-score scale*, which sets how a rating gap converts into a win probability (see §5).
 
 - Evenly matched teams trade ~10 points per player; a heavy favorite earns ~0 for winning and pays heavily for losing.
 - Because the payout curve *is* the win-probability curve mirrored, being favored has **zero expected value at every rating gap**. There is no gap size at which wins are both near-certain and still profitable — the structural farming that drives today's runaway becomes mathematically impossible.
@@ -111,7 +118,9 @@ Consequences:
 
 ### 3.4 Rating floor (new)
 
-The current system has **no floor** — a long cold streak can drive a player's rating arbitrarily low. We introduce one: ELO cannot drop below **750**. A floor is normally the one thing that *can* inflate a rating economy — it truncates losses, so the matching gains elsewhere go unbalanced — so we verified ours does not: in simulation the floor is almost never touched (the converged ladder's bottom sits near 810, and on average ~0 players reach the floor in a season). It functions as a safety net for the bottom, not an inflation pump.
+The current system has **no floor** — a long cold streak can drive a player's rating arbitrarily low, stranding them so far below the population that they can neither find balanced lobbies nor climb back. We introduce one: ELO cannot drop below **750**.
+
+A rating floor is standard practice in competitive games, and its real purpose is **player retention and matchmaking quality**, not economics: it keeps struggling players tethered to the pack and within reach of reasonable matches, rather than letting them drown in isolation far from everyone else. In our simulations the floor is almost never touched (the converged ladder's bottom sits near 810, and on average ~0 players reach it across a full season of 2,000 matches) — so it costs nothing at equilibrium; it is simply there for the cold streak that needs it. And because the payouts above it are zero-sum, the floor never becomes an inflation pump the way an unbalanced floor can.
 
 ---
 
@@ -123,18 +132,18 @@ All results below are averages over 30 independent simulated seasons per configu
 
 The proposed system converges to **the same ladder regardless of starting point**:
 
-| Starting point | Final ladder σ | Player ordering |
+| Starting point | Final ladder σ | Player order |
 |---|---|---|
-| Current official ratings | 97 | same shape |
-| Fresh reset (everyone 1000) | 88 | same shape |
-| Fresh reset, *snake matchmaking kept* | 97 | same shape |
+| Current official ratings | 97 | preserved |
+| Fresh reset (everyone 1000) | 88 | preserved |
+| Fresh reset, *snake matchmaking kept* | 97 | preserved |
 
-Per-player final ratings from the current-ratings start and the fresh-reset start agree at **correlation 0.85** — the ladder's shape is set by how players perform, not by where they began or which seat the matchmaker gave them. This is the defining property of a sound rating system, and the current formula fails it (section 2.2).
+By *preserved order* we mean the players end up ranked in the same sequence — the same people at the top, the same in the middle, the same at the bottom — no matter where the ladder started. The absolute σ differs slightly, but the ranking does not: per-player final ratings from the current-ratings start and the fresh-reset start agree at **correlation 0.85**. Where a player lands is set by how they play, not by where they began or which seat the matchmaker gave them. This is the defining property of a sound rating system, and the current formula fails it (section 2.2).
 
 ### 4.2 Convergence instead of runaway
 
-- Current system (prior analysis): ladder spread grows without bound and *accelerates* (σ 83 → 604 over a season).
-- Proposed system: from a fresh reset, spread rises from 0 and **flattens** into equilibrium around σ ≈ 88 within ~750–1,000 matches; started from current ratings it holds steady (σ ≈ 93 → 97, variance ratio ≈ 1.0). It reaches a stable level and stays there — no unbounded growth, and no free-falling bottom.
+- Current system (prior analysis): ladder spread grows without bound and *accelerates* (σ 83 → 604 over a projected season of 4,000–5,000 matches).
+- Proposed system: from a fresh reset, spread rises from 0 and **flattens** into equilibrium around σ ≈ 88 within ~750–1,000 matches (under half of a 2,000-match season); started from current ratings it holds steady (σ ≈ 93 → 97, variance ratio ≈ 1.0). It reaches a stable level and stays there — no unbounded growth, and no free-falling bottom.
 
 ### 4.3 Fairness and economy
 
@@ -163,10 +172,6 @@ Two things stand out:
 
 In short: the proposed system doesn't invent accountability from scratch, it *sharpens* it — and it puts defensive play on the board for the first time.
 
-### 4.5 If the matchmaking can't change
-
-The rating system is robust standalone: with the **snake matchmaker kept**, ratings still converge to the same fair ladder (the seat subsidy gets priced to ~zero by the expected-score payout — the highest rating stays near ~1,250 rather than running away). The residual cost is match fairness, not rating integrity — the favored side still *wins* ~49% vs 46% and carries an ~11-ELO team gap. That is why we recommend both changes: the rating overhaul fixes what ratings mean; the matchmaking change fixes who wins.
-
 ---
 
 ## 5. Proposed parameters
@@ -174,27 +179,29 @@ The rating system is robust standalone: with the **snake matchmaker kept**, rati
 | Parameter | Value | Meaning |
 |---|---|---|
 | K factor | 20 | Even teams trade ~10 ELO per player per match |
-| Expected-score scale | 30 | Calibrated so predicted win probability matches observed |
+| Expected-score scale | 30 | How steeply a rating gap converts into a win probability. A smaller number makes gaps matter more (a small edge implies a big favorite); larger flattens it. Tuned to 30 so the predicted win rate matches the win rate actually observed at each gap. |
 | Guaranteed share | 75% | Portion of each team pool paid regardless of individual performance — preserves "winners gain, losers lose" |
 | Goal credit | 1.1 | Per goal, to the scorer |
 | Assist credit | 0.9 | Per assist, as a bonus (assisted goal = 2.0 total team credit) |
 | Save credit | 2.5 | Per save — keeps defense visible despite sparse save data |
-| Performance scale | 240 | Spread dial: yields ~330 ELO top-to-bottom tier gap on the current ladder |
+| Performance scale | 240 | The spread dial: sets how far the ladder stretches (currently ~330 ELO from top 10% to bottom 10%). Meant to be **re-tuned as the game grows** — a larger, more varied player base supports a wider ladder. |
 | Rating floor | 750 | New safety net (current system has none); effectively untouched in equilibrium |
 | Matchmaking | Optimal split | Best of all 35 splits, random tiebreak/sides |
 
+The two *scales* are the main tuning knobs and do different jobs. The **expected-score scale (30)** shapes match payouts — how confidently a rating gap predicts the winner. The **performance scale (240)** shapes the ladder itself — how far ratings spread top to bottom. Neither is load-bearing for the fairness or convergence properties, so both can be adjusted from live data; expect to revisit the performance scale periodically as the community grows.
+
 ## 6. Migration
 
-**Recommended: a clean ELO reset.** Because the proposed system provably converges to the same ladder regardless of starting point (§4.1 — per-player agreement of **0.85** between a current-ratings start and a fresh reset), a reset costs nothing in final accuracy while gaining everything in legitimacy. Every player starts level; no one carries a seat-inflated or seat-deflated rating into the new system; and the ladder that emerges is visibly *earned* from match one under the new rules. In simulation a fresh reset settles into the fair ladder within ~750–1,000 matches (roughly one active season).
+**Recommended: a clean ELO reset.** Because the proposed system provably converges to the same ladder regardless of starting point (§4.1 — per-player agreement of **0.85** between a current-ratings start and a fresh reset), a reset costs nothing in final accuracy while gaining everything in legitimacy. Every player starts level; no one carries a seat-inflated or seat-deflated rating into the new system; and the ladder that emerges is visibly *earned* from match one under the new rules. In simulation a fresh reset settles into the fair ladder within ~750–1,000 matches (under half of a 2,000-match season).
 
 1. **Reset all ratings to the baseline (1000).** Optionally apply a placement multiplier (e.g. 2× deltas for a player's first 20 matches) so players reach their level faster; this does not change the equilibrium.
 2. The basic contract holds from match one: win = gain, loss = lose, every time.
-3. **Alternative (no reset):** seed the new system with current ratings instead. It converges to the same ladder over roughly a season, migrating seat distortions out gradually rather than at once — a gentler transition for communities that prefer continuity over a clean slate.
+3. **Alternative (no reset):** seed the new system with current ratings instead. It converges to the same ladder over roughly a season (2,000 matches), migrating seat distortions out gradually rather than at once — a gentler transition for communities that prefer continuity over a clean slate.
 
 ## 7. Known properties and limitations
 
 - **Smaller current sample.** This re-simulation runs on freshly-collected data: 45 rated players with 10+ matches across 260 recorded games. That is enough to establish the structural properties (path independence, fairness, convergence) but is a smaller base than a full historical pull; absolute numbers will firm up as more matches are collected.
-- **Sparse save data limits the defensive signal.** Saves correlate with rating only moderately (0.20) here because recorded save events are rare. The credit weight (2.5) is set high precisely to compensate; if saves become better recorded, expect this correlation to rise.
+- **Sparse save data limits the defensive signal.** Saves correlate with rating only moderately (0.24) here because recorded save events are rare. The credit weight (2.5) is set high precisely to compensate; if saves become better recorded, expect this correlation to rise.
 - **Exceptional dominance keeps slow headroom.** A player who consistently produces beyond what *any* rating predicts continues to creep upward slowly rather than hard-capping. We consider this correct behavior; it is slow and visible in monitoring.
 - **The simulation is a model, not a prophecy.** Outcome noise, stat generation, and lobby formation are simplified. Every comparison above holds the simulation environment constant between current and proposed systems.
 - **Weights are tunable post-launch.** The credit weights and spread dial are policy choices, not load-bearing math; they can be adjusted from live data without touching the convergence or fairness properties.
