@@ -66,7 +66,7 @@ Three layers, each fixing a failure mode the simulations isolated. Each layer wa
 
 ### 3.1 Matchmaking: optimal split
 
-With 8 players there are only **35 possible 4v4 splits**. Enumerate all of them, pick the split with the smallest average-ELO difference, break ties randomly, assign sides randomly.
+With 8 players there are only **35 ways to divide them into two teams of four** (C(8,4) ÷ 2). Enumerate all 35, pick the division with the smallest average-ELO difference, and break ties randomly. Those 35 divisions settle *who plays with whom*; because the ELO gap is identical whichever team you label Blue, a final coin flip then decides which of the two balanced teams takes the Blue vs. Red side — so no group can inherit a physical side advantage.
 
 - Strictly better balance than the snake (median team gap drops from **~11–12** to **~1–2 ELO**).
 - No seat is owned by anyone: balancing errors land on random sides and average out per player, instead of always favoring the same person.
