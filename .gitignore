@@ -10,6 +10,7 @@ data/*.db-shm
 output/*.png
 output/*.json
 output/*.pdf
+output/proposal_view/
 !output/.gitkeep
 
 *.log
