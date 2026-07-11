@@ -10,10 +10,10 @@
 
 The current ranked system has two structural problems that compound each other:
 
-1. **The snake-draft matchmaker systematically favors the higher-rated seat.** Because picks 1, 4, 5, 8 always go to the same side, the team holding the top seat carries a real rating edge whenever the ladder has a gap at the top — and ours does. In simulation the snake leaves a **median team-rating gap of ~11–12 ELO** (optimal balancing brings this to ~1–2), and the higher-rated side wins measurably more often. Measured directly from recorded matches, **the higher-rated team wins 50% of all games to the lower-rated side's 42%** (the remaining ~8% are ties) — 54.6% counting decisive games only. Rating predicts outcome, so a matchmaker that hands the same player the rating edge hands them a standing advantage.
+1. **The snake-draft matchmaker systematically favors the higher-rated seat.** Because picks 1, 4, 5, 8 always go to the same side, the team holding the top seat carries a real rating edge whenever the ladder has a gap at the top — and it does. In simulation the snake leaves a **median team-rating gap of ~11–12 ELO** (optimal balancing brings this to ~1–2), and the higher-rated side wins measurably more often. Measured directly from recorded matches, **the higher-rated team wins 50% of all games to the lower-rated side's 42%** (the remaining ~8% are ties) — 54.6% counting decisive games only. Rating predicts outcome, so a matchmaker that hands the same player the rating edge hands them a standing advantage.
 2. **The current rating formula cannot correct it.** A favored team still banks a guaranteed minimum for wins it was always going to get, so a permanently favored seat farms rating with no equilibrium — and because the current system **has no rating floor**, the players who keep losing sink without limit. The ladder pulls apart from both ends: a runaway top and a free-falling bottom. *(The unbounded-spread projection quantifying this — σ→604, a #1 seat past 5,000 ELO — comes from the earlier full-history analysis and is retained in §2.2; it models the current min-clamped formula, which the present simulator does not reproduce.)*
 
-We propose a three-layer replacement — **optimal team balancing, expected-score match payouts, and rating-relative performance credit** — that in simulation:
+I propose a three-layer replacement — **optimal team balancing, expected-score match payouts, and rating-relative performance credit** — that in simulation:
 
 - converges to the **same ladder from any starting point** (current ratings, a fresh reset, or even under the old snake matchmaking) — per-player final ratings agree across starting points at **correlation 0.85**,
 - keeps blue/red win rates even at **~46 / 46** (the rest draws), with no structurally favored side,
@@ -21,7 +21,7 @@ We propose a three-layer replacement — **optimal team balancing, expected-scor
 - makes stats matter *more*, and in chosen proportion — stat-to-rating correlation rises from **0.65 / 0.58 / 0.02** (goals / assists / saves under today's ratings) to **0.83 / 0.77 / 0.24**, turning defense from statistically invisible into a rated contribution,
 - and **never breaks the basic contract**: winners always gain ELO, losers always lose ELO, no matter how well or badly an individual performed.
 
-Migration is clean: because the system reaches the same ladder from any starting point (§4.1), we recommend a **full ELO reset** — everyone starts level and the fair ladder rebuilds itself within about a season (a season is 2,000 matches in these simulations). (Seeding from current ratings also works and converges to the same place, for communities that prefer continuity.)
+Migration is clean: because the system reaches the same ladder from any starting point (§4.1), I recommend a **full ELO reset** — everyone starts level and the fair ladder rebuilds itself within about a season (a season is 2,000 matches in these simulations). (Seeding from current ratings also works and converges to the same place, for communities that prefer continuity.)
 
 ---
 
@@ -29,7 +29,7 @@ Migration is clean: because the system reaches the same ladder from any starting
 
 ### 2.1 The snake draft has a built-in bias
 
-The live matchmaker sorts the 8-player lobby by ELO and deals picks **1, 4, 5, 8** to Blue and **2, 3, 6, 7** to Red. This balances *rank sums* (1+4+5+8 = 2+3+6+7), but it only balances *ELO* if ratings are evenly spaced. The moment the ladder has a gap at the top — and ours does — the team holding pick #1 inherits that entire gap.
+The live matchmaker sorts the 8-player lobby by ELO and deals picks **1, 4, 5, 8** to Blue and **2, 3, 6, 7** to Red. This balances *rank sums* (1+4+5+8 = 2+3+6+7), but it only balances *ELO* if ratings are evenly spaced. The moment the ladder has a gap at the top — and it does — the team holding pick #1 inherits that entire gap.
 
 Measured from recorded match history (238 fully-reconstructed 4v4 matches — 218 decisive, 20 ties):
 
@@ -119,9 +119,9 @@ Consequences:
 
 ### 3.4 Rating floor (new)
 
-The current system has **no floor** — a long cold streak can drive a player's rating arbitrarily low, stranding them so far below the population that they can neither find balanced lobbies nor climb back. We introduce one: ELO cannot drop below **750**.
+The current system has **no floor** — a long cold streak can drive a player's rating arbitrarily low, stranding them so far below the population that they can neither find balanced lobbies nor climb back. I introduce one: ELO cannot drop below **750**.
 
-A rating floor is standard practice in competitive games, and its real purpose is **player retention and matchmaking quality**, not economics: it keeps struggling players tethered to the pack and within reach of reasonable matches, rather than letting them drown in isolation far from everyone else. In our simulations the floor is almost never touched (the converged ladder's bottom sits near 810, and on average ~0 players reach it across a full season of 2,000 matches) — so it costs nothing at equilibrium; it is simply there for the cold streak that needs it. And because the payouts above it are zero-sum, the floor never becomes an inflation pump the way an unbalanced floor can.
+A rating floor is standard practice in competitive games, and its real purpose is **player retention and matchmaking quality**, not economics: it keeps struggling players tethered to the pack and within reach of reasonable matches, rather than letting them drown in isolation far from everyone else. In my simulations the floor is almost never touched (the converged ladder's bottom sits near 810, and on average ~0 players reach it across a full season of 2,000 matches) — so it costs nothing at equilibrium; it is simply there for the cold streak that needs it. And because the payouts above it are zero-sum, the floor never becomes an inflation pump the way an unbalanced floor can.
 
 ---
 
@@ -205,7 +205,7 @@ The two *scales* are the main tuning knobs and do different jobs. The **expected
 
 - **Smaller current sample.** This re-simulation runs on freshly-collected data: 45 rated players with 10+ matches across 260 recorded games. That is enough to establish the structural properties (path independence, fairness, convergence) but is a smaller base than a full historical pull; absolute numbers will firm up as more matches are collected.
 - **Sparse save data limits the defensive signal.** Saves correlate with rating only moderately (0.24) here because recorded save events are rare. The credit weight (2.5) is set high precisely to compensate; if saves become better recorded, expect this correlation to rise.
-- **Exceptional dominance keeps slow headroom.** A player who consistently produces beyond what *any* rating predicts continues to creep upward slowly rather than hard-capping. We consider this correct behavior; it is slow and visible in monitoring.
+- **Exceptional dominance keeps slow headroom.** A player who consistently produces beyond what *any* rating predicts continues to creep upward slowly rather than hard-capping. I consider this correct behavior; it is slow and visible in monitoring.
 - **The simulation is a model, not a prophecy.** Outcome noise, stat generation, and lobby formation are simplified. Every comparison above holds the simulation environment constant between current and proposed systems.
 - **Weights are tunable post-launch.** The credit weights and spread dial are policy choices, not load-bearing math; they can be adjusted from live data without touching the convergence or fairness properties.
 
