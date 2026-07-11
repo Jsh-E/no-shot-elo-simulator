@@ -1,0 +1,16 @@
+node_modules/
+
+# Local player database — collected per-user via the Refresh button (public
+# game API). Never publish real player usernames/IDs.
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# Generated simulation outputs
+output/*.png
+output/*.json
+output/*.pdf
+!output/.gitkeep
+
+*.log
+.DS_Store

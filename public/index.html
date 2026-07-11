@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Match Simulation</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div>
+          <h1>Match Season Simulator</h1>
+          <p class="subtitle">
+            Monte Carlo ELO stability test &mdash; local port of the Scrim Bot
+            <code>/simulateseason</code> command
+          </p>
+        </div>
+        <div class="db-panel">
+          <div class="db-stats" id="dbStats">
+            <span class="db-loading">Loading database&hellip;</span>
+          </div>
+          <div class="refresh-controls">
+            <label class="deep-toggle" title="Full backfill: scans every page for every known player. Slower.">
+              <input type="checkbox" id="deepRefresh" />
+              Deep
+            </label>
+            <button id="refreshBtn" class="btn btn-secondary">
+              Refresh match history
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="refresh-progress hidden" id="refreshProgress">
+        <div class="refresh-stage" id="refreshStage">Starting&hellip;</div>
+        <div class="bar"><div class="bar-fill" id="refreshBar"></div></div>
+        <div class="refresh-counts" id="refreshCounts"></div>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel form-panel">
+        <div class="panel-head">
+          <h2>Parameters</h2>
+          <button id="resetBtn" class="btn btn-ghost btn-sm">Reset defaults</button>
+        </div>
+        <form id="paramForm"><!-- fields injected by app.js --></form>
+        <div class="run-row">
+          <button id="runBtn" class="btn btn-primary btn-lg">Run simulation</button>
+          <span class="run-note" id="runNote"></span>
+        </div>
+      </section>
+
+      <section class="panel results-panel">
+        <div class="panel-head">
+          <h2>Results</h2>
+          <a id="jsonLink" class="btn btn-ghost btn-sm hidden" href="#" target="_blank">Download JSON</a>
+        </div>
+        <div id="resultsEmpty" class="empty">
+          Set your parameters and click <strong>Run simulation</strong>.
+          <br /><br />
+          This starts from the selected ladder, then generates randomized future
+          4v4 matches using each player's historical averages.
+        </div>
+        <div id="resultsError" class="error-box hidden"></div>
+        <div id="resultsBody" class="hidden">
+          <div class="embed" id="embed"></div>
+          <div class="graph-wrap" id="graphWrap"></div>
+          <p class="footer-note">
+            This is a Monte Carlo projection, not evidence. It is useful for
+            checking whether a model tends to create ELO bubbles.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

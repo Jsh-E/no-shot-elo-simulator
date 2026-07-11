@@ -1,0 +1,28 @@
+{
+  "name": "match-simulation-app",
+  "version": "1.0.0",
+  "description": "Standalone Monte Carlo match/ELO simulator ported from the Scrim Bot /simulateseason command, with a local web UI and in-app match-history refresh.",
+  "type": "module",
+  "main": "src/server.ts",
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "dev": "tsx watch src/server.ts"
+  },
+  "keywords": [
+    "elo",
+    "monte-carlo",
+    "simulation"
+  ],
+  "license": "ISC",
+  "dependencies": {
+    "better-sqlite3": "^12.10.0",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/express": "^5.0.0",
+    "@types/node": "^25.9.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}
