@@ -21,7 +21,7 @@ We propose a three-layer replacement — **optimal team balancing, expected-scor
 - makes stats matter *more*, and in chosen proportion — stat-to-rating correlation rises from **0.65 / 0.58 / 0.02** (goals / assists / saves under today's ratings) to **0.83 / 0.77 / 0.24**, turning defense from statistically invisible into a rated contribution,
 - and **never breaks the basic contract**: winners always gain ELO, losers always lose ELO, no matter how well or badly an individual performed.
 
-Migration is gentle: starting from today's ratings, the system *converges* rather than resets — players drift to their earned level over roughly one season of play.
+Migration is clean: because the system reaches the same ladder from any starting point (§4.1), we recommend a **full ELO reset** — everyone starts level and the fair ladder rebuilds itself within about a season. (Seeding from current ratings also works and converges to the same place, for communities that prefer continuity.)
 
 ---
 
@@ -185,9 +185,11 @@ The rating system is robust standalone: with the **snake matchmaker kept**, rati
 
 ## 6. Migration
 
-1. **No reset required.** Seed the new system with current ratings. In simulation this *converges* — over roughly one season, every player drifts to the level their play demonstrates. Players whose current rating is inflated or deflated by seat effects migrate gradually rather than being zeroed.
+**Recommended: a clean ELO reset.** Because the proposed system provably converges to the same ladder regardless of starting point (§4.1 — per-player agreement of **0.85** between a current-ratings start and a fresh reset), a reset costs nothing in final accuracy while gaining everything in legitimacy. Every player starts level; no one carries a seat-inflated or seat-deflated rating into the new system; and the ladder that emerges is visibly *earned* from match one under the new rules. In simulation a fresh reset settles into the fair ladder within ~750–1,000 matches (roughly one active season).
+
+1. **Reset all ratings to the baseline (1000).** Optionally apply a placement multiplier (e.g. 2× deltas for a player's first 20 matches) so players reach their level faster; this does not change the equilibrium.
 2. The basic contract holds from match one: win = gain, loss = lose, every time.
-3. (Optional) A placement multiplier (e.g. 2× deltas for a player's first 20 matches) accelerates new-player convergence without affecting the equilibrium.
+3. **Alternative (no reset):** seed the new system with current ratings instead. It converges to the same ladder over roughly a season, migrating seat distortions out gradually rather than at once — a gentler transition for communities that prefer continuity over a clean slate.
 
 ## 7. Known properties and limitations
 
@@ -196,6 +198,31 @@ The rating system is robust standalone: with the **snake matchmaker kept**, rati
 - **Exceptional dominance keeps slow headroom.** A player who consistently produces beyond what *any* rating predicts continues to creep upward slowly rather than hard-capping. We consider this correct behavior; it is slow and visible in monitoring.
 - **The simulation is a model, not a prophecy.** Outcome noise, stat generation, and lobby formation are simplified. Every comparison above holds the simulation environment constant between current and proposed systems.
 - **Weights are tunable post-launch.** The credit weights and spread dial are policy choices, not load-bearing math; they can be adjusted from live data without touching the convergence or fairness properties.
+
+---
+
+## 8. Run the simulator yourself
+
+Every figure in this document is reproducible. The simulator is open source and runs entirely on your own machine — the only network call is the optional data refresh, which pulls the public game ladder.
+
+**Repository:** https://github.com/Jsh-E/no-shot-elo-simulator
+
+**Requirements:** [Node.js](https://nodejs.org) 18+ and (for the graphs) Python 3.9+ with `matplotlib` and `numpy` (`pip install matplotlib numpy`).
+
+**Get it running:**
+
+```
+git clone https://github.com/Jsh-E/no-shot-elo-simulator.git
+cd no-shot-elo-simulator
+npm install
+npm start
+```
+
+Then open **http://localhost:4173** in your browser. The database ships empty — click **Refresh match history** once to collect the current ladder and match stats from the public API (rate-limited, so a first full pull takes a few minutes). When the "4v4 rosters" counter turns green you can simulate.
+
+**Reproduce the comparison in this document:** in the parameter panel, use the proposed tuned config — K factor 20, expected scale 30, guaranteed 75%, goal 1.1, assist 0.9, save 2.5, performance scale 240, ELO floor 750 — and switch **Team assignment** between **Optimal** (proposed) and **Snake** (current), and **Starting mode** between **Official** and **Fresh**, to see path independence, fairness, and convergence for yourself. The exact experiment battery and the correlation analysis behind §4.4 are scripted in `scripts/proposal_numbers.ts` and `scripts/stat_correlations.ts` (`npx tsx scripts/proposal_numbers.ts`).
+
+Anyone can run their own numbers, on their own data, and check every claim here independently.
 
 ---
 
