@@ -15,6 +15,7 @@
             Monte Carlo ELO stability test &mdash; local port of the Scrim Bot
             <code>/simulateseason</code> command
           </p>
+          <button id="patchNotesBtn" class="patch-link" type="button">What&rsquo;s new</button>
         </div>
         <div class="db-panel">
           <div class="db-stats" id="dbStats">
@@ -44,6 +45,11 @@
           <h2>Parameters</h2>
           <button id="resetBtn" class="btn btn-ghost btn-sm">Reset defaults</button>
         </div>
+        <div class="preset-row">
+          <label for="presetSelect">Preset</label>
+          <select id="presetSelect"><!-- options injected by app.js --></select>
+        </div>
+        <p class="preset-note" id="presetNote"></p>
         <form id="paramForm"><!-- fields injected by app.js --></form>
         <div class="run-row">
           <button id="runBtn" class="btn btn-primary btn-lg">Run simulation</button>
@@ -73,6 +79,16 @@
         </div>
       </section>
     </main>
+
+    <div class="modal-overlay hidden" id="patchModal">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="patchTitle">
+        <div class="modal-head">
+          <h2 id="patchTitle">What&rsquo;s new</h2>
+          <button class="modal-close" id="patchClose" type="button" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body" id="patchBody"><!-- injected by app.js --></div>
+      </div>
+    </div>
 
     <script src="app.js"></script>
   </body>

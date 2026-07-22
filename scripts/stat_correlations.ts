@@ -35,12 +35,15 @@ const officialElo = pool.map(p => p.elo);
 const goals = pool.map(p => p.avgGoals);
 const assists = pool.map(p => p.avgAssists);
 const saves = pool.map(p => p.avgSaves);
+const trueSkill = pool.map(p => p.trueSkill);
 
 console.log(`Eligible players: ${pool.length}`);
 console.log(`\n--- CURRENT official ELO vs per-game stats ---`);
 console.log(`goals:   ${pearson(goals, officialElo).toFixed(2)}`);
 console.log(`assists: ${pearson(assists, officialElo).toFixed(2)}`);
 console.log(`saves:   ${pearson(saves, officialElo).toFixed(2)}`);
+console.log(`\n--- SKILL RECOVERY: latent skill vs rating ---`);
+console.log(`current official ELO vs true skill: ${pearson(trueSkill, officialElo).toFixed(2)}`);
 
 // --- PROPOSED system: per-game stats vs simulated final ELO (E1 config) ---
 const r = runSimulation({
@@ -49,6 +52,7 @@ const r = runSimulation({
   goalWeight: 1.1, assistWeight: 0.9, saveWeight: 2.5,
   guaranteedPercent: 75, kFactor: 20, expectedScale: 30,
   performanceScale: 240, eloFloor: 750, minMatches: 10,
+  seed: process.env.SEED ?? "no-shot-proposal-v1",
 });
 
 if (r.ok) {
@@ -67,4 +71,5 @@ if (r.ok) {
   console.log(`goals:   ${pearson(g, elos).toFixed(2)}`);
   console.log(`assists: ${pearson(a, elos).toFixed(2)}`);
   console.log(`saves:   ${pearson(s, elos).toFixed(2)}`);
+  console.log(`\nproposed final ELO vs true skill: ${(r.summary.averageFinal.skillRecovery ?? NaN).toFixed(2)}`);
 }

@@ -14,6 +14,31 @@ const BASE: Partial<SimulationParams> = {
   simulatedMatches: 2000,
   simulations: 30,
   minMatches: 10,
+  // Fixed so the whole battery reproduces exactly. Override with SEED=... to
+  // confirm a figure is not an artifact of this particular stream.
+  seed: process.env.SEED ?? "no-shot-proposal-v1",
+};
+
+// The live system: snake matchmaking, and a flat payout clamped into the 9-11
+// band seen in recorded matches, with no rating floor. Legacy mode applies no
+// per-player performance weighting at all — every winner gains the same delta
+// and every loser pays it back — so guaranteedPercent is irrelevant here; it is
+// set to 100 only so the echoed config reads as "fully flat".
+//
+// eloFloor is pushed below any reachable rating rather than set to 0. The live
+// system has no floor, and a floor at zero is still a floor: it absorbs a large
+// amount of rating per season and understates the measured spread, hiding the
+// very free-fall this experiment exists to show. Ratings legitimately go
+// negative here (the season's bottom player finishes below zero).
+//
+// CONFIRM AGAINST THE LIVE FORMULA before citing these numbers.
+const LEGACY: Partial<SimulationParams> = {
+  teamAssignment: "snake",
+  payoutMode: "legacy",
+  legacyMinDelta: 9,
+  legacyMaxDelta: 11,
+  guaranteedPercent: 100,
+  eloFloor: -1_000_000,
 };
 
 function pearson(xs: number[], ys: number[]) {
@@ -56,7 +81,7 @@ function run(label: string, params: Partial<SimulationParams>) {
   console.log(`\n### ${label}`);
   console.log(`eligible players: ${s.setup.eligiblePlayers}`);
   console.log(`final sigma: ${s.averageFinal.stdDev.toFixed(1)} | starting sigma: ${s.startingLadder.stdDev.toFixed(1)} | variance ratio: ${s.averageFinal.varianceRatio == null ? "N/A" : s.averageFinal.varianceRatio.toFixed(3)}`);
-  console.log(`official corr: ${s.averageFinal.officialCorrelation == null ? "N/A" : s.averageFinal.officialCorrelation.toFixed(3)}`);
+  console.log(`official corr: ${s.averageFinal.officialCorrelation == null ? "N/A" : s.averageFinal.officialCorrelation.toFixed(3)} | skill recovery: ${s.averageFinal.skillRecovery == null ? "N/A" : s.averageFinal.skillRecovery.toFixed(3)}`);
   console.log(`win A/B/draw: ${s.matchOutcomes.teamAWinRate.toFixed(1)} / ${s.matchOutcomes.teamBWinRate.toFixed(1)} / ${s.matchOutcomes.drawRate.toFixed(1)} | upsets: ${s.matchOutcomes.upsetRate.toFixed(1)}`);
   console.log(`favored%: ${s.teamBalance.teamAFavoredRate.toFixed(1)} | median team gap: ${s.teamBalance.medianTeamEloDiff.toFixed(1)} | avg gap: ${s.teamBalance.avgTeamEloDiff.toFixed(1)}`);
   console.log(`top10: ${s.topBottomGap.top10.toFixed(0)} | bottom10: ${s.topBottomGap.bottom10.toFixed(0)} | tier gap: ${s.topBottomGap.gap.toFixed(0)}`);
@@ -76,6 +101,21 @@ const fresh = run("E2 — Fresh start (1000), OPTIMAL split", { startingMode: "f
 run("E3 — Fresh start, SNAKE matchmaking kept", { startingMode: "fresh", teamAssignment: "snake" });
 run("E4 — Official start, SNAKE matchmaking", { startingMode: "official", teamAssignment: "snake" });
 run("E5 — 400-player stress test (official, optimal, +fakes)", { startingMode: "official", teamAssignment: "optimal", fakePlayerCount: 355 });
+
+// --- Section 2.2: the current system, re-derived ---------------------------
+// L1 is the live system. L2 and L3 isolate which layer causes the runaway by
+// fixing one at a time: L2 keeps the snake but pays expected score, L3 keeps
+// the min-clamped payout but balances teams optimally.
+run("L1 — CURRENT: snake + 9-11 clamped payout, no floor", { ...LEGACY, startingMode: "official" });
+run("L2 — snake kept, expected-score payout", { ...LEGACY, payoutMode: "expected", guaranteedPercent: 75, startingMode: "official" });
+run("L3 — 9-11 clamped payout kept, optimal split", { ...LEGACY, teamAssignment: "optimal", startingMode: "official" });
+
+// Band sensitivity. The clamp width is what governs how much rating feedback
+// survives: a wider band restores Elo's self-correction, 10-10 removes it
+// entirely, 0-20 is unclamped. 9-11 is the band observed live.
+for (const [min, max] of [[10, 10], [9, 11], [7, 13], [5, 15], [0, 20]]) {
+  run(`L4 — current system, band ${min}-${max}`, { ...LEGACY, legacyMinDelta: min, legacyMaxDelta: max, startingMode: "official" });
+}
 
 // Path independence: agreement of per-player final ladder between official and fresh starts.
 if (official && fresh) {
