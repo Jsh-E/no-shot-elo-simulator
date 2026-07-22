@@ -88,6 +88,9 @@ Identical to the `/simulateseason` slash-command options:
 | K factor | 20 | Max delta per player; even teams pay K/2 |
 | Expected scale | 30 | ELO-gap scale for win expectation |
 | Performance scale | expected × 4 | Credit-share scale; sets ladder spread (blank = auto) |
+| Payout mode | expected | `expected` (proposed) or `legacy` (current min-clamped formula) |
+| Legacy min / max delta | 9 / 11 | `legacy` mode only: band the win payout is clamped into |
+| Seed | blank | Fixes the RNG so a run reproduces exactly (blank = random each run) |
 
 ## How it maps to the bot
 

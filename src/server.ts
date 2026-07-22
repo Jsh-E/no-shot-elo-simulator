@@ -36,12 +36,15 @@ const NUMERIC_KEYS: (keyof SimulationParams)[] = [
   "kFactor",
   "expectedScale",
   "performanceScale",
+  "legacyMinDelta",
+  "legacyMaxDelta",
 ];
 
 const STRING_KEYS: (keyof SimulationParams)[] = [
   "appearanceMode",
   "startingMode",
   "teamAssignment",
+  "payoutMode",
 ];
 
 // Only forward keys the client actually sent (so omitted params fall back to
@@ -60,6 +63,13 @@ function parseParams(body: any): Partial<SimulationParams> {
       const value = Number(body[key]);
       if (!Number.isNaN(value)) (params as any)[key] = value;
     }
+  }
+
+  // Seed is deliberately not a NUMERIC_KEY: a human-readable seed
+  // ("proposal-e1") is valid and gets hashed, and an omitted seed must stay
+  // null so runs keep the unseeded Math.random behaviour by default.
+  if (body.seed != null && body.seed !== "") {
+    params.seed = String(body.seed);
   }
 
   return params;

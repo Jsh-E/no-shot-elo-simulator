@@ -48,6 +48,7 @@ const FIELD_GROUPS = [
       { key: "selectionEloGap", label: "Selection ELO gap", type: "num", default: 300, min: 50, max: 1000, desc: "Max ELO gap among the selected 8" },
       { key: "eloFloor", label: "ELO floor", type: "int", default: 0, min: 0, max: 1000, desc: "Minimum ELO players can drop to" },
       { key: "fakePlayerCount", label: "Fake players", type: "int", default: 0, min: 0, max: 500, desc: "Clones of real players to stress test counts" },
+      { key: "seed", label: "Seed", type: "text", default: "", desc: "Fixes the RNG so a run reproduces exactly (blank = random)" },
     ],
   },
   {
@@ -60,11 +61,134 @@ const FIELD_GROUPS = [
       { key: "kFactor", label: "K factor", type: "num", default: 20, min: 1, max: 60, desc: "Max delta per player; even teams pay K/2" },
       { key: "expectedScale", label: "Expected scale", type: "num", default: 30, min: 5, max: 400, desc: "ELO gap scale for win expectation" },
       { key: "performanceScale", label: "Performance scale", type: "num", default: "", min: 20, max: 1000, desc: "Credit-share scale (blank = expected × 4)" },
+      {
+        key: "payoutMode",
+        label: "Payout mode",
+        type: "select",
+        default: "expected",
+        desc: "Which match payout formula to use",
+        options: [
+          { value: "expected", label: "Expected score (proposed)" },
+          { value: "legacy", label: "Min-clamped (current system)" },
+        ],
+      },
+      { key: "legacyMinDelta", label: "Legacy min delta", type: "num", default: 9, min: 0, max: 60, step: 0.5, desc: "Legacy mode only: least a win can pay" },
+      { key: "legacyMaxDelta", label: "Legacy max delta", type: "num", default: 11, min: 0, max: 60, step: 0.5, desc: "Legacy mode only: most a win can pay" },
     ],
   },
 ];
 
 const ALL_FIELDS = FIELD_GROUPS.flatMap((g) => g.fields);
+
+// Recent user-facing changes, newest first. Shown in the "What's new" popup.
+const PATCH_NOTES = [
+  {
+    version: "1.3",
+    date: "Jul 22, 2026",
+    changes: [
+      "New preset: Real-data replay — runs the current system on exactly the matches and players you've collected, at each player's real appearance frequency and a season the size of your actual match count.",
+      "Added this What's new window.",
+    ],
+  },
+  {
+    version: "1.2",
+    date: "Jul 21, 2026",
+    changes: [
+      "Preset dropdown — jump to the proposal's headline configurations (Proposed, Fresh reset, Current system) in one click; it fills the form so you can tweak before running.",
+      "The current-system payout is now a faithful flat 9–11: winners gain between 9 and 11, losers lose the same, with no per-player stat weighting.",
+    ],
+  },
+  {
+    version: "1.1",
+    date: "Jul 20, 2026",
+    changes: [
+      "Payout mode selector — compare the proposed expected-score system against the current clamped 9–11 formula.",
+      "Skill Recovery metric in results — how well the final ladder tracks each player's underlying skill.",
+      "Reproducible runs — set a Seed for identical results every time; leave it blank for a fresh random run.",
+      "Match outcomes are now driven by a fixed underlying skill, so the stat/rating correlations measure a real signal instead of the model echoing itself.",
+      "Draws are now counted toward player stat profiles — they carry more saves per game than decisive matches, so leaving them out understated defense.",
+    ],
+  },
+];
+
+// Preset configurations mirroring the headline experiments in
+// scripts/proposal_numbers.ts. Selecting one resets every field to its default,
+// then overlays the preset's values — the seed is deliberately left blank so
+// each run is a fresh randomized draw. `values: null` is the inert placeholder.
+const TUNED = {
+  goalWeight: 1.1,
+  assistWeight: 0.9,
+  saveWeight: 2.5,
+  kFactor: 20,
+  expectedScale: 30,
+  performanceScale: 240,
+  minMatches: 10,
+  simulatedMatches: 2000,
+  simulations: 30,
+};
+
+const PRESETS = [
+  { label: "Load a preset…", values: null },
+  {
+    label: "Defaults",
+    note: "The app's out-of-the-box parameters.",
+    values: {},
+  },
+  {
+    label: "Proposed system — E1 (official start, optimal split)",
+    note: "The proposed tuned config, started from current ratings. Converges (σ≈97) and tracks skill.",
+    values: {
+      ...TUNED,
+      startingMode: "official",
+      teamAssignment: "optimal",
+      payoutMode: "expected",
+      guaranteedPercent: 75,
+      eloFloor: 750,
+    },
+  },
+  {
+    label: "Fresh reset — E2 (everyone 1000, optimal split)",
+    note: "The proposed system from a clean reset — the recommended migration. Rebuilds the same ladder from scratch.",
+    values: {
+      ...TUNED,
+      startingMode: "fresh",
+      teamAssignment: "optimal",
+      payoutMode: "expected",
+      guaranteedPercent: 75,
+      eloFloor: 750,
+    },
+  },
+  {
+    label: "Current system — L1 (snake + 9–11 clamp)",
+    note: "The live system: snake draft, clamped payout, no per-player routing. Runs away (σ→600+). Floor is 0 here — the doc runs it with no floor at all, so the real free-fall goes further.",
+    values: {
+      ...TUNED,
+      startingMode: "official",
+      teamAssignment: "snake",
+      payoutMode: "legacy",
+      legacyMinDelta: 9,
+      legacyMaxDelta: 11,
+      guaranteedPercent: 100,
+      eloFloor: 0,
+    },
+  },
+  {
+    label: "Real-data replay — current system on our matches",
+    note: "Replays the live system on exactly the data we have: real stored ELO, snake matchmaking, the flat 9–11 payout, each player appearing at their real historical frequency, and a season the size of our actual 4v4 roster count. Floor is 0 (the live system has none).",
+    dynamicMatches: true,
+    values: {
+      ...TUNED,
+      startingMode: "official",
+      teamAssignment: "snake",
+      appearanceMode: "historical",
+      payoutMode: "legacy",
+      legacyMinDelta: 9,
+      legacyMaxDelta: 11,
+      guaranteedPercent: 100,
+      eloFloor: 0,
+    },
+  },
+];
 
 // ---- helpers ----
 const $ = (id) => document.getElementById(id);
@@ -108,6 +232,16 @@ function buildForm() {
           select.appendChild(o);
         }
         wrap.appendChild(select);
+      } else if (field.type === "text") {
+        // Seeds are free-form: a number is used directly, anything else is
+        // hashed server-side, and blank means "unseeded".
+        const input = el("input");
+        input.id = "f_" + field.key;
+        input.name = field.key;
+        input.type = "text";
+        input.value = field.default;
+        input.placeholder = "random";
+        wrap.appendChild(input);
       } else {
         const input = el("input");
         input.id = "f_" + field.key;
@@ -132,6 +266,77 @@ function resetForm() {
   }
 }
 
+// ---- patch notes ----
+function buildPatchNotes() {
+  const body = $("patchBody");
+  if (!body) return;
+  body.innerHTML = "";
+  for (const entry of PATCH_NOTES) {
+    const section = el("div", "patch-entry");
+    const head = el(
+      "div",
+      "patch-entry-head",
+      `<span class="patch-version">v${entry.version}</span><span class="patch-date">${entry.date}</span>`
+    );
+    section.appendChild(head);
+    const list = el("ul", "patch-list");
+    for (const change of entry.changes) {
+      const li = el("li");
+      li.textContent = change;
+      list.appendChild(li);
+    }
+    section.appendChild(list);
+    body.appendChild(section);
+  }
+}
+
+function openPatchNotes() {
+  $("patchModal")?.classList.remove("hidden");
+}
+
+function closePatchNotes() {
+  $("patchModal")?.classList.add("hidden");
+}
+
+// ---- presets ----
+function buildPresetSelect() {
+  const select = $("presetSelect");
+  if (!select) return;
+  select.innerHTML = "";
+  PRESETS.forEach((preset, index) => {
+    const option = el("option");
+    option.value = String(index);
+    option.textContent = preset.label;
+    select.appendChild(option);
+  });
+  select.addEventListener("change", () => {
+    applyPreset(PRESETS[Number(select.value)]);
+  });
+}
+
+function applyPreset(preset) {
+  const note = $("presetNote");
+  if (!preset || preset.values == null) {
+    if (note) note.textContent = "";
+    return;
+  }
+  // Reset everything first so switching presets never leaves stale values, then
+  // overlay this preset's fields. Seed stays blank (its default) intentionally.
+  resetForm();
+  for (const [key, value] of Object.entries(preset.values)) {
+    const node = $("f_" + key);
+    if (node) node.value = value;
+  }
+  // Size the run to the data actually collected: simulated matches = our real
+  // 4v4 roster count. Falls back to the preset's static value if stats haven't
+  // loaded yet.
+  if (preset.dynamicMatches && latestDbStats?.fullRosterMatches > 0) {
+    const node = $("f_simulatedMatches");
+    if (node) node.value = latestDbStats.fullRosterMatches;
+  }
+  if (note) note.textContent = preset.note ?? "";
+}
+
 function collectParams() {
   const body = {};
   for (const field of ALL_FIELDS) {
@@ -145,7 +350,12 @@ function collectParams() {
 }
 
 // ---- DB stats ----
+// Latest snapshot of the collected database, so presets can size a run to the
+// data we actually have (e.g. simulated matches = real 4v4 roster count).
+let latestDbStats = null;
+
 function renderDbStats(stats) {
+  latestDbStats = stats;
   const box = $("dbStats");
   const enoughData = stats.fullRosterMatches >= 8;
   const updated = stats.lastRunAt
@@ -258,7 +468,8 @@ function renderResults(data) {
         `Randomness: ${b(setup.randomness)}\n` +
         `Selection ELO Gap: ${b(setup.selectionEloGap)}\n` +
         `Draw Threshold: ${b(setup.drawThreshold)}\n` +
-        `ELO Floor: ${b(setup.eloFloor)}`
+        `ELO Floor: ${b(setup.eloFloor)}\n` +
+        `Seed: ${b(setup.seed == null ? "random (not reproducible)" : setup.seed)}`
     ),
     field(
       "Model",
@@ -268,7 +479,11 @@ function renderResults(data) {
         `Guaranteed: ${b(m.guaranteedPercent + "%")}\n` +
         `K Factor: ${b(m.kFactor)}\n` +
         `Scale: ${b(m.expectedScale)}\n` +
-        `Perf Scale: ${b(m.performanceScale)}`
+        `Perf Scale: ${b(m.performanceScale)}\n` +
+        `Payout: ${b(m.payoutMode)}` +
+        (m.legacyMinDelta == null
+          ? ""
+          : `\nLegacy Delta Band: ${b(m.legacyMinDelta + "-" + m.legacyMaxDelta)}`)
     ),
 
     field(
@@ -283,6 +498,7 @@ function renderResults(data) {
         `P90-P10 Spread: ${b(round(s.averageFinal.spread))}\n` +
         `Variance Ratio: ${b(s.averageFinal.varianceRatio == null ? "N/A" : f2(s.averageFinal.varianceRatio))}\n` +
         `Official Corr: ${b(s.averageFinal.officialCorrelation == null ? "N/A" : f2(s.averageFinal.officialCorrelation))}\n` +
+        `Skill Recovery: ${b(s.averageFinal.skillRecovery == null ? "N/A" : f2(s.averageFinal.skillRecovery))}\n` +
         `Avg Max ELO: ${b(round(s.averageFinal.avgMaxElo))}\n` +
         `Avg Min ELO: ${b(round(s.averageFinal.avgMinElo))}`,
       true
@@ -487,9 +703,27 @@ function checkServedOverHttp() {
 // ---- init ----
 if (checkServedOverHttp()) {
   buildForm();
+  buildPresetSelect();
+  buildPatchNotes();
   loadStats();
   resumeRefreshIfRunning();
   $("runBtn").addEventListener("click", runSimulation);
-  $("resetBtn").addEventListener("click", resetForm);
+  $("resetBtn").addEventListener("click", () => {
+    resetForm();
+    const select = $("presetSelect");
+    if (select) select.value = "0";
+    const note = $("presetNote");
+    if (note) note.textContent = "";
+  });
   $("refreshBtn").addEventListener("click", startRefresh);
+
+  $("patchNotesBtn").addEventListener("click", openPatchNotes);
+  $("patchClose").addEventListener("click", closePatchNotes);
+  // Close on backdrop click (but not when clicking inside the panel) or Escape.
+  $("patchModal").addEventListener("click", (e) => {
+    if (e.target === $("patchModal")) closePatchNotes();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closePatchNotes();
+  });
 }

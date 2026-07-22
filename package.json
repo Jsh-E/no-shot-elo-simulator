@@ -6,7 +6,8 @@
   "main": "src/server.ts",
   "scripts": {
     "start": "tsx src/server.ts",
-    "dev": "tsx watch src/server.ts"
+    "dev": "tsx watch src/server.ts",
+    "test": "node --import tsx/esm --test test/*.test.ts"
   },
   "keywords": [
     "elo",

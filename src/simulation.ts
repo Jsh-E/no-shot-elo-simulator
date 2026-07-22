@@ -1,5 +1,6 @@
 import { getAllPlayers, getMatchesWithPlayersAsc } from "./db";
 import { buildMergeLookup } from "./playerIdentity";
+import { rand, setSeed, normalizeSeed } from "./rng";
 
 // Ported from the Scrim Bot (src/commands/simulateseason.ts). All the Monte
 // Carlo logic is preserved verbatim; only the Discord command wrapper is
@@ -9,6 +10,7 @@ import { buildMergeLookup } from "./playerIdentity";
 export type StartingMode = "official" | "hypothetical" | "fresh";
 export type TeamAssignment = "balanced" | "snake" | "optimal";
 export type AppearanceMode = "equal" | "historical";
+export type PayoutMode = "expected" | "legacy";
 
 const PROGRESSION_CHECKPOINTS = [
   50, 100, 150, 200, 250, 500, 750, 1000, 1500, 2000, 3500, 5000,
@@ -33,6 +35,13 @@ type SimPlayer = {
   avgGoals: number;
   avgAssists: number;
   avgSaves: number;
+  // Fixed latent "true skill": the player's expected per-game credit, captured
+  // once at pool build and never updated. Match outcomes are driven by this,
+  // not by each match's freshly-drawn stat line — see the strength formula in
+  // simulateOneFuture. Keeping the driver of the result separate from the
+  // stats the payout credits is what lets section 4.4 measure a real signal
+  // rather than a variable correlating with itself. [[true-skill-model]]
+  trueSkill: number;
   historicalMatches: number;
 };
 
@@ -173,6 +182,28 @@ function percentile(values: number[], p: number) {
   return sorted[lower] + (sorted[upper] - sorted[lower]) * (index - lower);
 }
 
+// Recorded eloDelta values arrive in two regimes: a base band and a doubled
+// one. Across the current data, |eloDelta| runs p10 9, p50 18, p90 21, and
+// 51% of rows exceed 15 — halving those collapses everything onto a single
+// 9-12 band. That is the live placement multiplier (2x deltas while a player
+// is new) showing up in the record, and this undoes it so a match's rating
+// movement can be compared against a consistent scale.
+// A player's expected per-game credit under the run's weights. Used as the
+// fixed latent skill that drives match outcomes, so the credit function the
+// system rewards and the skill that decides games are one coherent quantity.
+function expectedCredit(
+  avgGoals: number,
+  avgAssists: number,
+  avgSaves: number,
+  goalWeight: number,
+  assistWeight: number,
+  saveWeight: number
+) {
+  return (
+    avgGoals * goalWeight + avgAssists * assistWeight + avgSaves * saveWeight
+  );
+}
+
 function normalizeDelta(delta: number) {
   return Math.abs(delta) > 15 ? delta / 2 : delta;
 }
@@ -189,7 +220,7 @@ function getExpectedScore(eloDifference: number, expectedScale: number) {
   return 1 / (1 + Math.pow(10, -eloDifference / expectedScale));
 }
 
-function getExpectedTeamDelta(
+export function getExpectedTeamDelta(
   winningTeamAvgElo: number,
   losingTeamAvgElo: number,
   kFactor: number,
@@ -200,6 +231,43 @@ function getExpectedTeamDelta(
     expectedScale
   );
   return kFactor * (1 - expectedWin);
+}
+
+// Legacy (live) payout: the expected-score pool clamped into a narrow band,
+// [legacyMinDelta, legacyMaxDelta]. Reconstructed from the deltas actually
+// observed in recorded matches, which sit in a 9-11 band.
+//
+// That band is the whole story. The live system pays every player on the
+// winning team the same delta and takes it back from every loser — no
+// per-player performance weighting at all (that flat distribution is enforced
+// where these deltas are applied, so it does not depend on guaranteedPercent).
+// 9-11 is its entire response to rating gap.
+//
+// The failure mode this produces is not really a "minimum" — it is the near
+// absence of rating feedback. Proper Elo self-corrects because climbing raises
+// your expected score, which shrinks what wins pay you and grows what losses
+// cost; that negative feedback is what creates an equilibrium. Clamped into a
+// 2-point band the feedback is almost gone, so any player with a persistent
+// win rate above legacyMaxDelta / (legacyMinDelta + legacyMaxDelta) gains
+// rating every match forever, with nothing to arrest it.
+//
+// NOTE: reconstructed from observed deltas, not from the live bot source.
+// Confirm against the real formula before citing any figure this mode gives.
+export function getLegacyTeamDelta(
+  winningTeamAvgElo: number,
+  losingTeamAvgElo: number,
+  kFactor: number,
+  expectedScale: number,
+  legacyMinDelta: number,
+  legacyMaxDelta: number
+) {
+  const expected = getExpectedTeamDelta(
+    winningTeamAvgElo,
+    losingTeamAvgElo,
+    kFactor,
+    expectedScale
+  );
+  return Math.min(legacyMaxDelta, Math.max(legacyMinDelta, expected));
 }
 
 function getExpectedDrawTeamDelta(
@@ -215,7 +283,7 @@ function getExpectedDrawTeamDelta(
   return kFactor * (expectedHigher - 0.5);
 }
 
-function getPoolWeights(params: {
+export function getPoolWeights(params: {
   players: MatchPlayerRow[];
   eloByAccountId: Map<string, number>;
   goalWeight: number;
@@ -262,7 +330,7 @@ function getPoolWeights(params: {
   };
 }
 
-function distributeWinningPool(
+export function distributeWinningPool(
   players: MatchPlayerRow[],
   pool: number,
   guaranteedRatio: number,
@@ -282,7 +350,7 @@ function distributeWinningPool(
   });
 }
 
-function distributeLosingPool(
+export function distributeLosingPool(
   players: MatchPlayerRow[],
   pool: number,
   guaranteedRatio: number,
@@ -303,7 +371,7 @@ function distributeLosingPool(
 }
 
 function randomNormalish() {
-  return Math.random() + Math.random() + Math.random() - 1.5;
+  return rand() + rand() + rand() - 1.5;
 }
 
 function noisyStat(avg: number, randomness: number) {
@@ -314,7 +382,7 @@ function noisyStat(avg: number, randomness: number) {
 function shuffle<T>(items: T[]) {
   const copy = [...items];
   for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rand() * (i + 1));
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;
@@ -336,7 +404,7 @@ function selectLobbyPlayers(players: SimPlayer[], selectionEloGap: number) {
   return shuffle(players).slice(0, 8);
 }
 
-function buildBalancedTeams(lobby: SimPlayer[]) {
+export function buildBalancedTeams(lobby: SimPlayer[]) {
   const teamSplitAttempts = 40;
   const acceptableTeamDiff = 50;
 
@@ -384,7 +452,13 @@ function combinations<T>(items: T[], size: number): T[][] {
   return [...withFirst, ...withoutFirst];
 }
 
-function buildOptimalTeams(lobby: SimPlayer[]) {
+// Index splits for the standard 8-player lobby, precomputed once. Ties are
+// broken by first-best-wins, so the enumeration order is load-bearing: this
+// reproduces combinations([1..7], 3) exactly, keeping seeded runs identical to
+// the pre-optimization behaviour.
+const LOBBY_COMBOS_8 = combinations([1, 2, 3, 4, 5, 6, 7], 3);
+
+export function buildOptimalTeams(lobby: SimPlayer[]) {
   const shuffled = shuffle(lobby);
   const teamSize = Math.floor(shuffled.length / 2);
 
@@ -392,15 +466,26 @@ function buildOptimalTeams(lobby: SimPlayer[]) {
     return { teamA: shuffled, teamB: [] as SimPlayer[] };
   }
 
-  const [anchor, ...rest] = shuffled;
+  // Player 0 anchors team A: fixing one player removes the mirror-image
+  // duplicate of every split, leaving C(7,3) = 35 distinct divisions.
+  const restIndices = shuffled.map((_, index) => index).slice(1);
+
+  const combos =
+    shuffled.length === 8
+      ? LOBBY_COMBOS_8
+      : combinations(restIndices, teamSize - 1);
 
   let bestTeamA = shuffled.slice(0, teamSize);
   let bestTeamB = shuffled.slice(teamSize);
   let bestDiff = Infinity;
 
-  for (const combo of combinations(rest, teamSize - 1)) {
-    const teamA = [anchor, ...combo];
-    const teamB = rest.filter(player => !combo.includes(player));
+  for (const combo of combos) {
+    const inTeamA = new Set(combo);
+
+    const teamA = [shuffled[0], ...combo.map(index => shuffled[index])];
+    const teamB = restIndices
+      .filter(index => !inTeamA.has(index))
+      .map(index => shuffled[index]);
 
     const diff = Math.abs(
       average(teamA.map(player => player.elo)) -
@@ -417,7 +502,7 @@ function buildOptimalTeams(lobby: SimPlayer[]) {
   return { teamA: bestTeamA, teamB: bestTeamB };
 }
 
-function buildSnakeTeams(lobby: SimPlayer[]) {
+export function buildSnakeTeams(lobby: SimPlayer[]) {
   const ranked = [...lobby].sort((a, b) => b.elo - a.elo);
 
   const teamA: SimPlayer[] = [];
@@ -487,12 +572,17 @@ function jitterStat(value: number) {
 function generateFakePlayers(
   realPlayers: SimPlayer[],
   count: number,
-  startingMode: StartingMode
+  startingMode: StartingMode,
+  weights: { goalWeight: number; assistWeight: number; saveWeight: number }
 ) {
   const fakes: SimPlayer[] = [];
 
   for (let i = 0; i < count; i++) {
-    const donor = realPlayers[Math.floor(Math.random() * realPlayers.length)];
+    const donor = realPlayers[Math.floor(rand() * realPlayers.length)];
+
+    const avgGoals = jitterStat(donor.avgGoals);
+    const avgAssists = jitterStat(donor.avgAssists);
+    const avgSaves = jitterStat(donor.avgSaves);
 
     fakes.push({
       key: `fake-${i + 1}`,
@@ -504,9 +594,17 @@ function generateFakePlayers(
       matches: donor.matches,
       statMatches: donor.statMatches,
       historicalMatches: donor.historicalMatches,
-      avgGoals: jitterStat(donor.avgGoals),
-      avgAssists: jitterStat(donor.avgAssists),
-      avgSaves: jitterStat(donor.avgSaves),
+      avgGoals,
+      avgAssists,
+      avgSaves,
+      trueSkill: expectedCredit(
+        avgGoals,
+        avgAssists,
+        avgSaves,
+        weights.goalWeight,
+        weights.assistWeight,
+        weights.saveWeight
+      ),
     });
   }
 
@@ -594,17 +692,27 @@ export function buildInitialPlayerPool(params: {
     const teamB = match.players.filter(player => player.team === "B");
 
     if (teamA.length !== 4 || teamB.length !== 4) continue;
-    if (isDraw(match)) continue;
 
     const allPlayers = [...teamA, ...teamB];
+    const drawnMatch = isDraw(match);
 
-    const averageMatchDelta =
-      allPlayers.reduce((sum, player) => {
-        return sum + Math.abs(normalizeDelta(player.eloDelta ?? 0));
-      }, 0) / allPlayers.length;
+    // Guard against matches carrying no real rating movement (unrated lobbies,
+    // or rows the collector could not fully enrich). A draw legitimately moves
+    // very little rating, so the guard would reject valid draws and is applied
+    // to decisive matches only. On the current data it excludes nothing.
+    if (!drawnMatch) {
+      const averageMatchDelta =
+        allPlayers.reduce((sum, player) => {
+          return sum + Math.abs(normalizeDelta(player.eloDelta ?? 0));
+        }, 0) / allPlayers.length;
 
-    if (averageMatchDelta < 5) continue;
+      if (averageMatchDelta < 5) continue;
+    }
 
+    // Stat profiles count every valid 4v4, draws included. Draws are a
+    // meaningfully different sample — they carry ~34% more saves per player
+    // than decisive games — so dropping them would bias each player's
+    // defensive average downward and understate the save signal in section 4.4.
     for (const row of allPlayers) {
       const profile = ensureProfile(row);
       profile.matches += 1;
@@ -612,6 +720,10 @@ export function buildInitialPlayerPool(params: {
       profile.assists += row.assists ?? 0;
       profile.saves += row.saves ?? 0;
     }
+
+    // The hypothetical rebuild below replays wins and losses, so it needs a
+    // winner. Draws contribute their stats above and stop here.
+    if (drawnMatch) continue;
 
     if (startingMode === "official" || startingMode === "fresh") {
       continue;
@@ -679,17 +791,32 @@ export function buildInitialPlayerPool(params: {
 
   return [...profileMap.values()]
     .filter(player => player.matches >= minMatches)
-    .map(player => ({
-      key: player.key,
-      username: player.username,
-      elo: player.elo,
-      matches: startingMode === "fresh" ? 0 : player.matches,
-      statMatches: player.matches,
-      historicalMatches: player.matches,
-      avgGoals: player.goals / player.matches,
-      avgAssists: player.assists / player.matches,
-      avgSaves: player.saves / player.matches,
-    }));
+    .map(player => {
+      const avgGoals = player.goals / player.matches;
+      const avgAssists = player.assists / player.matches;
+      const avgSaves = player.saves / player.matches;
+      return {
+        key: player.key,
+        username: player.username,
+        elo: player.elo,
+        matches: startingMode === "fresh" ? 0 : player.matches,
+        statMatches: player.matches,
+        historicalMatches: player.matches,
+        avgGoals,
+        avgAssists,
+        avgSaves,
+        // Latent skill fixed here from real historical averages, so it is
+        // independent of the noisy per-match stat lines generated later.
+        trueSkill: expectedCredit(
+          avgGoals,
+          avgAssists,
+          avgSaves,
+          goalWeight,
+          assistWeight,
+          saveWeight
+        ),
+      };
+    });
 }
 
 function simulateOneFuture(params: {
@@ -709,6 +836,9 @@ function simulateOneFuture(params: {
   randomness: number;
   drawThreshold: number;
   eloFloor: number;
+  payoutMode: PayoutMode;
+  legacyMinDelta: number;
+  legacyMaxDelta: number;
 }): SimResult {
   const {
     startingMode,
@@ -727,9 +857,16 @@ function simulateOneFuture(params: {
     teamAssignment,
     drawThreshold,
     eloFloor,
+    payoutMode,
+    legacyMinDelta,
+    legacyMaxDelta,
   } = params;
 
   const players = clonePlayers(initialPlayers);
+
+  // Player identity is fixed for the whole season, so this is built once here
+  // rather than rebuilt inside the match loop.
+  const playerByKey = new Map(players.map(player => [player.key, player]));
 
   let teamAWins = 0;
   let teamBWins = 0;
@@ -826,29 +963,26 @@ function simulateOneFuture(params: {
     signedTeamEloDiffs.push(signedTeamEloDiff);
     if (signedTeamEloDiff > 0) teamAFavoredCount++;
 
-    const teamAStatPower = teamAMatchRows.reduce((sum, player) => {
-      return (
-        sum +
-        (player.goals ?? 0) * goalWeight +
-        (player.assists ?? 0) * assistWeight +
-        (player.saves ?? 0) * saveWeight
-      );
-    }, 0);
-
-    const teamBStatPower = teamBMatchRows.reduce((sum, player) => {
-      return (
-        sum +
-        (player.goals ?? 0) * goalWeight +
-        (player.assists ?? 0) * assistWeight +
-        (player.saves ?? 0) * saveWeight
-      );
-    }, 0);
+    // Who wins is decided by each team's fixed latent skill plus noise, NOT by
+    // this match's freshly-drawn stat line. The realized stats still flow into
+    // the payout (via credit shares below); keeping them out of the outcome is
+    // what breaks the circularity in section 4.4 — otherwise the same random
+    // draw would both decide the result and set the rating credit, and stats
+    // would correlate with rating partly by construction. [[true-skill-model]]
+    //
+    // The elo term is retained: it is the channel through which a rating gap
+    // (from the snake draft, or a legacy runaway) turns into a win-rate edge.
+    // The proposed expected-score payout gives that channel zero expected
+    // value, so keeping it does not let ratings self-inflate under the proposed
+    // system; under the clamped legacy payout it does, which is the runaway.
+    const teamASkill = teamA.reduce((sum, player) => sum + player.trueSkill, 0);
+    const teamBSkill = teamB.reduce((sum, player) => sum + player.trueSkill, 0);
 
     const teamAStrength =
-      teamAAvgElo + teamAStatPower * 3 + randomNormalish() * randomness * 25;
+      teamAAvgElo + teamASkill * 3 + randomNormalish() * randomness * 25;
 
     const teamBStrength =
-      teamBAvgElo + teamBStatPower * 3 + randomNormalish() * randomness * 25;
+      teamBAvgElo + teamBSkill * 3 + randomNormalish() * randomness * 25;
 
     const teamAWon = teamAStrength >= teamBStrength;
     const drawnMatch = Math.abs(teamAStrength - teamBStrength) <= drawThreshold;
@@ -885,41 +1019,61 @@ function simulateOneFuture(params: {
 
     const averageTeamDelta = drawnMatch
       ? getExpectedDrawTeamDelta(losingAvgElo, winningAvgElo, kFactor, expectedScale)
-      : getExpectedTeamDelta(winningAvgElo, losingAvgElo, kFactor, expectedScale);
+      : payoutMode === "legacy"
+        ? getLegacyTeamDelta(
+            winningAvgElo,
+            losingAvgElo,
+            kFactor,
+            expectedScale,
+            legacyMinDelta,
+            legacyMaxDelta
+          )
+        : getExpectedTeamDelta(winningAvgElo, losingAvgElo, kFactor, expectedScale);
 
     const eloByAccountId = new Map(
       [...teamA, ...teamB].map(player => [player.key, player.elo])
     );
 
-    const winningDeltas = distributeWinningPool(
-      winningRows,
-      averageTeamDelta * winningRows.length,
-      guaranteedRatio,
-      getPoolWeights({
-        players: winningRows,
-        eloByAccountId,
-        goalWeight,
-        assistWeight,
-        saveWeight,
-        performanceScale,
-      }).winningWeights
-    );
+    // The legacy (live) system applies NO performance weighting: every player
+    // on the winning team gains the same delta and every player on the losing
+    // team loses that same amount. The delta is the [min,max]-clamped team
+    // value from getLegacyTeamDelta above — so a winner always gains between
+    // legacyMinDelta and legacyMaxDelta (9–11), and the loser pays it back,
+    // zero-sum. This is independent of guaranteedPercent, which only shapes the
+    // proposed expected-score payout's performance split.
+    const winningDeltas =
+      payoutMode === "legacy"
+        ? winningRows.map(player => ({ player, delta: averageTeamDelta }))
+        : distributeWinningPool(
+            winningRows,
+            averageTeamDelta * winningRows.length,
+            guaranteedRatio,
+            getPoolWeights({
+              players: winningRows,
+              eloByAccountId,
+              goalWeight,
+              assistWeight,
+              saveWeight,
+              performanceScale,
+            }).winningWeights
+          );
 
-    const losingDeltas = distributeLosingPool(
-      losingRows,
-      averageTeamDelta * losingRows.length,
-      guaranteedRatio,
-      getPoolWeights({
-        players: losingRows,
-        eloByAccountId,
-        goalWeight,
-        assistWeight,
-        saveWeight,
-        performanceScale,
-      }).losingWeights
-    );
-
-    const playerByKey = new Map(players.map(player => [player.key, player]));
+    const losingDeltas =
+      payoutMode === "legacy"
+        ? losingRows.map(player => ({ player, delta: -averageTeamDelta }))
+        : distributeLosingPool(
+            losingRows,
+            averageTeamDelta * losingRows.length,
+            guaranteedRatio,
+            getPoolWeights({
+              players: losingRows,
+              eloByAccountId,
+              goalWeight,
+              assistWeight,
+              saveWeight,
+              performanceScale,
+            }).losingWeights
+          );
 
     for (const result of winningDeltas) {
       gains.push(result.delta);
@@ -1065,6 +1219,10 @@ export type SimulationParams = {
   kFactor: number;
   expectedScale: number;
   performanceScale: number;
+  payoutMode: PayoutMode;
+  legacyMinDelta: number;
+  legacyMaxDelta: number;
+  seed: number | string | null;
 };
 
 export const DEFAULT_PARAMS: SimulationParams = {
@@ -1086,6 +1244,10 @@ export const DEFAULT_PARAMS: SimulationParams = {
   kFactor: 20,
   expectedScale: 30,
   performanceScale: 30 * 4,
+  payoutMode: "expected",
+  legacyMinDelta: 9,
+  legacyMaxDelta: 11,
+  seed: null,
 };
 
 export type SimulationResponse =
@@ -1123,7 +1285,16 @@ export function runSimulation(input: Partial<SimulationParams>): SimulationRespo
     guaranteedPercent,
     kFactor,
     expectedScale,
+    payoutMode,
+    legacyMinDelta,
+    legacyMaxDelta,
   } = params;
+
+  // Seed once for the whole battery: the stream runs unbroken across every
+  // simulated season, so seasons still differ from each other but the battery
+  // as a whole reproduces exactly. seed: null keeps the old Math.random path.
+  const resolvedSeed = normalizeSeed(params.seed);
+  setSeed(resolvedSeed);
 
   const guaranteedRatio = guaranteedPercent / 100;
 
@@ -1156,7 +1327,8 @@ export function runSimulation(input: Partial<SimulationParams>): SimulationRespo
   const fakePlayers = generateFakePlayers(
     initialPlayers,
     fakePlayerCount,
-    startingMode
+    startingMode,
+    { goalWeight, assistWeight, saveWeight }
   );
 
   const simulationPlayers = [...initialPlayers, ...fakePlayers];
@@ -1165,9 +1337,19 @@ export function runSimulation(input: Partial<SimulationParams>): SimulationRespo
     player.elo = Math.max(eloFloor, player.elo);
   }
 
-  const currentElos = initialPlayers.map(player => {
-    return currentOfficialEloByAccountId.get(player.key) ?? 1000;
-  });
+  // Aligned with playerNames / startingElos / finalElos, which all cover
+  // simulationPlayers (real players followed by fakes). Fakes have no official
+  // rating, so they carry null and any consumer correlating against this array
+  // must drop them rather than silently pairing up misaligned indices.
+  const currentElos = simulationPlayers.map(player =>
+    currentOfficialEloByAccountId.get(player.key) ?? null
+  );
+
+  // Real players only, index-aligned with initialPlayers, for the official
+  // correlation below.
+  const currentElosForRealPlayers = initialPlayers.map(
+    player => currentOfficialEloByAccountId.get(player.key) ?? 1000
+  );
 
   const startingElos = simulationPlayers.map(player => player.elo);
   const startingStdDev = standardDeviation(startingElos);
@@ -1195,6 +1377,9 @@ export function runSimulation(input: Partial<SimulationParams>): SimulationRespo
         randomness,
         drawThreshold,
         eloFloor,
+        payoutMode,
+        legacyMinDelta,
+        legacyMaxDelta,
       })
     );
   }
@@ -1281,7 +1466,19 @@ export function runSimulation(input: Partial<SimulationParams>): SimulationRespo
   );
 
   const officialCorrelation = pearsonCorrelation(
-    currentElos,
+    currentElosForRealPlayers,
+    avgSimulatedEloByPlayer
+  );
+
+  // Skill recovery: how well the final ladder tracks each player's fixed latent
+  // skill. This is the headline the outcome/payout split makes measurable —
+  // since trueSkill drives outcomes but is never itself a rating input, a high
+  // correlation means the rating system genuinely recovered skill rather than
+  // echoing its own inputs. Comparable across payout modes (proposed vs legacy)
+  // as a direct accuracy test. [[true-skill-model]]
+  const trueSkillByRealPlayer = initialPlayers.map(player => player.trueSkill);
+  const skillRecovery = pearsonCorrelation(
+    trueSkillByRealPlayer,
     avgSimulatedEloByPlayer
   );
 
@@ -1303,6 +1500,7 @@ export function runSimulation(input: Partial<SimulationParams>): SimulationRespo
       randomness,
       drawThreshold,
       eloFloor,
+      seed: resolvedSeed,
     },
     model: {
       goalWeight,
@@ -1312,6 +1510,9 @@ export function runSimulation(input: Partial<SimulationParams>): SimulationRespo
       kFactor,
       expectedScale,
       performanceScale,
+      payoutMode,
+      legacyMinDelta: payoutMode === "legacy" ? legacyMinDelta : null,
+      legacyMaxDelta: payoutMode === "legacy" ? legacyMaxDelta : null,
     },
     summary: {
       progressionSummary,
@@ -1321,6 +1522,7 @@ export function runSimulation(input: Partial<SimulationParams>): SimulationRespo
       avgSpread,
       varianceRatio,
       officialCorrelation,
+      skillRecovery,
       avgMaxElo,
       avgMinElo,
       avgAbove1300,
@@ -1358,6 +1560,10 @@ export function runSimulation(input: Partial<SimulationParams>): SimulationRespo
     startingElos,
     playerNames: simulationPlayers.map(player => player.username),
     currentElos,
+    // Real players only, index-aligned with currentElosForRealPlayers, so any
+    // consumer can recompute skill recovery directly from the export.
+    trueSkills: trueSkillByRealPlayer,
+    currentElosRated: currentElosForRealPlayers,
     simulationResults: results.map(result => ({
       finalStdDev: result.finalStdDev,
       p90p10Spread: result.p90p10Spread,
@@ -1391,6 +1597,7 @@ export function runSimulation(input: Partial<SimulationParams>): SimulationRespo
       selectionEloGap,
       drawThreshold,
       eloFloor,
+      seed: resolvedSeed,
     },
     model: {
       goalWeight,
@@ -1400,6 +1607,9 @@ export function runSimulation(input: Partial<SimulationParams>): SimulationRespo
       kFactor,
       expectedScale,
       performanceScale,
+      payoutMode,
+      legacyMinDelta: payoutMode === "legacy" ? legacyMinDelta : null,
+      legacyMaxDelta: payoutMode === "legacy" ? legacyMaxDelta : null,
     },
     startingLadder: { stdDev: startingStdDev, spread: startingSpread },
     averageFinal: {
@@ -1407,6 +1617,7 @@ export function runSimulation(input: Partial<SimulationParams>): SimulationRespo
       spread: avgSpread,
       varianceRatio,
       officialCorrelation,
+      skillRecovery,
       avgMaxElo,
       avgMinElo,
     },

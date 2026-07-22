@@ -478,11 +478,32 @@ def main():
         data = json.load(file)
 
     player_names = data.get("playerNames", [])
-    current = [float(value) for value in data.get("currentElos", [])]
     starting = [float(value) for value in data.get("startingElos", [])]
     results = data.get("simulationResults", [])
     simulated = flatten_simulated_elos(results)
     simulated_average_by_player = average_final_elos_by_player(results)
+
+    # currentElos is index-aligned with playerNames and covers fake players too,
+    # which have no official rating and arrive as null. Plots that pair a
+    # current rating against a simulated one have to drop those entries by
+    # index; plots over current ratings alone just skip them.
+    current_raw = [
+        None if value is None else float(value)
+        for value in data.get("currentElos", [])
+    ]
+    current = [value for value in current_raw if value is not None]
+
+    rated_indices = [
+        index
+        for index, value in enumerate(current_raw)
+        if value is not None and index < len(simulated_average_by_player)
+    ]
+    current_rated = [current_raw[index] for index in rated_indices]
+    simulated_rated = [simulated_average_by_player[index] for index in rated_indices]
+    names_rated = [
+        player_names[index] if index < len(player_names) else ""
+        for index in rated_indices
+    ]
 
     if not current or not starting or not simulated:
         raise SystemExit("No usable simulation data found.")
@@ -520,15 +541,15 @@ def main():
 
     plot_residual_leaderboard(
         fig.add_subplot(grid[1, :3]),
-        current,
-        simulated_average_by_player,
-        player_names,
+        current_rated,
+        simulated_rated,
+        names_rated,
     )
 
     plot_current_vs_simulated_scatter(
         fig.add_subplot(grid[1, 3:]),
-        current,
-        simulated_average_by_player,
+        current_rated,
+        simulated_rated,
     )
 
     avg_goals_by_player = average_metric_by_player(results, "finalAvgGoals")
